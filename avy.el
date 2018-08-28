@@ -1923,7 +1923,7 @@ Otherwise, the whole regex is highlighted."
              (when (>= (length str) 1)
                (let ((case-fold-search
                       (or avy-case-fold-search (string= str (downcase str))))
-                     found)
+                     (found 0))
                  (avy-dowindows current-prefix-arg
                    (dolist (pair (avy--find-visible-regions
                                   (window-start)
@@ -1936,14 +1936,15 @@ Otherwise, the whole regex is highlighted."
                            (let* ((idx (if (= (length (match-data)) 4) 1 0))
                                   (ov (make-overlay
                                        (match-beginning idx) (match-end idx))))
-                             (setq found t)
+                             (cl-incf found)
                              (push ov overlays)
                              (overlay-put
                               ov 'window (selected-window))
                              (overlay-put
                               ov 'face 'avy-goto-char-timer-face)))))))
                  ;; No matches at all, so there's surely a typo in the input.
-                 (unless found (beep)))))
+                 (if (zerop found) (beep)
+                   (avy--update-goto-char-timer-face found)))))
            (nreverse (mapcar (lambda (ov)
                                (cons (cons (overlay-start ov)
                                            (overlay-end ov))
@@ -1951,6 +1952,26 @@ Otherwise, the whole regex is highlighted."
                              overlays)))
       (dolist (ov overlays)
         (delete-overlay ov)))))
+
+(defsubst avy--shade-of-success (amt)
+  "Return an #RRGGBB color based on how close AMT is to 1."
+  ;; AMT is an integer >= 1, and we want to map it to a greenish color, with 1 being very green
+  ;; and large numbers being not very green
+  ;; 2 * (1 - logistic(num-found / 4))
+  (let ((sat (- 2 (/ 2.0 (1+ (exp (/ amt 4.0)))))))
+    (apply #'color-rgb-to-hex (append (color-hsl-to-rgb .35 sat .3) '(2)))))
+
+(defun avy--update-goto-char-timer-face (num-found)
+  "Update `avy-goto-char-timer-face' based on NUM-FOUND."
+  (cond
+   ((zerop num-found))
+   ((= num-found 1)
+    (set-face-foreground 'avy-goto-char-timer-face "#0a1")
+    (set-face-background 'avy-goto-char-timer-face "#fff"))
+   (t
+    (set-face-foreground 'avy-goto-char-timer-face nil)
+    (set-face-background 'avy-goto-char-timer-face
+                         (avy--shade-of-success (1- num-found))))))
 
 ;;;###autoload
 (defun avy-goto-char-timer (&optional arg)
